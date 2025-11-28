@@ -1,18 +1,27 @@
 import requests
+import pandas as pd
+
+OPENWEATHER_KEY = "be0eee25ce9b61255d720e187b17bf61"
 
 def get_weather(lat, lon):
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&hourly=relativehumidity_2m"
-        r = requests.get(url, timeout=10)
-        data = r.json()
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHER_KEY}"
+    r = requests.get(url)
+    data = r.json()
+    return {
+        "temp": data['main']['temp'],
+        "humidity": data['main']['humidity'],
+        "wind": data['wind']['speed']
+    }
 
-        current = data.get("current_weather", {})
-        humidity = data.get("hourly", {}).get("relativehumidity_2m", ["N/A"])[0]
-
-        return {
-            "temp": current.get("temperature", "N/A"),
-            "wind": current.get("windspeed", "N/A"),
-            "humidity": humidity,
-        }
-    except:
-        return {"temp": "N/A", "wind": "N/A", "humidity": "N/A"}
+def get_weather_forecast(lat, lon):
+    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHER_KEY}"
+    r = requests.get(url)
+    data = r.json()
+    df = pd.DataFrame([{
+        "datetime": x["dt_txt"],
+        "temp": x["main"]["temp"],
+        "humidity": x["main"]["humidity"],
+        "wind": x["wind"]["speed"]
+    } for x in data['list']])
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    return df

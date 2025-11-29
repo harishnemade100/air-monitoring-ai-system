@@ -7,3 +7,15 @@ NEWSAPI_KEY = "cb368c3ef5be4f34bc72a5067dea32fe"  # NewsAPI Key
 WAQI_TOKEN = "b6488c90742fa136de473fa5647d956d91b92f84"
 GEOAPIFY_KEY = "5dc18d830a2b4a76bb603199d6cb7cc3"
 OPENWEATHER_KEY = "be0eee25ce9b61255d720e187b17bf61"
+
+DEFAULT_CITY = "Pune"
+DEFAULT_COORDS = (18.5204, 73.8567)  # Pune city
+
+
+
+
+DATABASE_NAME =  "air_pollution_user_db"
+HOST =  "localhost"
+PORT = 5433
+USER_NAME = "postgres"
+PASSWORD = "Harish@123"

@@ -9,6 +9,10 @@ streamlit-folium = "==0.25.3"
 shapely = "==2.1.2"
 matplotlib = "==3.10.7"
 plotly = "==6.5.0"
+sqlalchemy = "*"
+pyyaml = "*"
+werkzeug = "*"
+psycopg2-binary = "*"
 
 [dev-packages]
 

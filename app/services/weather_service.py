@@ -1,7 +1,6 @@
 import requests
 import pandas as pd
-
-OPENWEATHER_KEY = "be0eee25ce9b61255d720e187b17bf61"
+from setting.constants import OPENWEATHER_KEY 
 
 def get_weather(lat, lon):
     url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHER_KEY}"

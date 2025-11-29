@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
+from setting.constants import WAQI_TOKEN
 
-WAQI_TOKEN = "b6488c90742fa136de473fa5647d956d91b92f84"
 
 def get_aqi(lat, lon):
     url = f"https://api.waqi.info/feed/geo:{lat};{lon}/?token={WAQI_TOKEN}"

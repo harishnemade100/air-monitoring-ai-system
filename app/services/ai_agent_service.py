@@ -1,8 +1,6 @@
 import requests
+from setting.constants import DEEPAI_API_KEY, NEWSAPI_KEY
 
-# ---------------- API KEYS ----------------
-DEEPAI_API_KEY = "7853c555-66c7-4b63-8360-4a52bddd603d"        # DeepAI Text Generation API Key
-NEWSAPI_KEY = "cb368c3ef5be4f34bc72a5067dea32fe"  # NewsAPI Key
 
 # ---------------- DEEPAI AI ADVISORY ----------------
 def get_ai_suggestion_deepai(city, zone, aqi, temp, humidity):

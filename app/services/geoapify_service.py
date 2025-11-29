@@ -1,7 +1,6 @@
 import requests
 from urllib.parse import quote_plus
-
-GEOAPIFY_KEY = "5dc18d830a2b4a76bb603199d6cb7cc3"
+from setting.constants import GEOAPIFY_KEY
 
 def get_place_id(city):
     url = (

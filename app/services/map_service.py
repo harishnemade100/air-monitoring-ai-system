@@ -1,15 +1,12 @@
 import folium
 from shapely.geometry import shape
-from services.waqi_service import get_aqi
+from services.waqi_service import get_aqi, get_aqi_towers
 from services.weather_service import get_weather
 from utils.color_utils import aqi_color
 
-def create_map(selected_feature=None, all_features=None, default_city_coords=None):
+def create_map(selected_feature=None, all_features=None, default_city_coords=None, show_towers=False, city_name=None):
     """
     Creates a folium map.
-    - selected_feature: GeoJSON of selected zone (optional)
-    - all_features: list of GeoJSON zones (optional)
-    - default_city_coords: tuple(lat, lon) to center the map if no zone selected
     """
     if selected_feature:
         geom = selected_feature["geometry"]
@@ -23,6 +20,7 @@ def create_map(selected_feature=None, all_features=None, default_city_coords=Non
 
     m = folium.Map(location=map_center, zoom_start=12)
 
+    # Draw zones
     if all_features:
         for feature in all_features:
             name = feature["properties"].get("name", "Zone")
@@ -31,7 +29,6 @@ def create_map(selected_feature=None, all_features=None, default_city_coords=Non
             cent = poly.centroid
             lat, lon = cent.y, cent.x
 
-            # Highlight selected feature
             if feature == selected_feature:
                 aqi = get_aqi(lat, lon)
                 weather = get_weather(lat, lon)
@@ -44,7 +41,7 @@ def create_map(selected_feature=None, all_features=None, default_city_coords=Non
                     f"<b>Humidity:</b> {weather['humidity']}%"
                 )
             else:
-                color = "#ADD8E6"  # light blue for other zones
+                color = "#ADD8E6"
                 popup = name
 
             folium.GeoJson(
@@ -59,5 +56,24 @@ def create_map(selected_feature=None, all_features=None, default_city_coords=Non
             ).add_to(m)
 
             folium.Marker([lat, lon], popup=popup).add_to(m)
+
+    # Add AQI towers
+    if show_towers and city_name:
+        towers = get_aqi_towers(city_name)
+        for t in towers:
+            tower_name = t['station']['name']
+            lat, lon = t['station']['geo']
+            aqi = t['aqi'] if t['aqi'] != '-' else 0
+            color = aqi_color(aqi)
+
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=7,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.8,
+                popup=f"<b>{tower_name}</b><br>AQI: {aqi}"
+            ).add_to(m)
 
     return m

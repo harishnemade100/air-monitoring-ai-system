@@ -1,6 +1,5 @@
 import requests
 import pandas as pd
-from datetime import datetime
 
 WAQI_TOKEN = "b6488c90742fa136de473fa5647d956d91b92f84"
 

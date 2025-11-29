@@ -2,37 +2,9 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+from utils.color_utils import aqi_color, aqi_health_label
 
-# ---------------- AQI HEALTH STATUS ----------------
-def aqi_health_label(aqi):
-    if aqi <= 50:
-        return "Good"
-    elif aqi <= 100:
-        return "Moderate"
-    elif aqi <= 150:
-        return "Unhealthy for Sensitive Groups"
-    elif aqi <= 200:
-        return "Unhealthy"
-    elif aqi <= 300:
-        return "Very Unhealthy"
-    else:
-        return "Hazardous"
 
-def aqi_color(aqi):
-    if aqi <= 50:
-        return "green"
-    elif aqi <= 100:
-        return "yellow"
-    elif aqi <= 150:
-        return "orange"
-    elif aqi <= 200:
-        return "red"
-    elif aqi <= 300:
-        return "purple"
-    else:
-        return "maroon"
-
-# ---------------- AQI FORECAST ----------------
 def get_aqi_forecast(lat, lon, current_aqi):
     """
     Returns simulated past 12h + next 12h AQI forecast DataFrame

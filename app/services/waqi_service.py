@@ -23,3 +23,15 @@ def get_aqi_forecast(lat, lon):
     df['date'] = pd.to_datetime(df['day'])
     df = df.melt(id_vars=['date'], value_name='AQI', var_name='Metric')
     return df
+
+
+def get_aqi_towers(city_name):
+    """
+    Returns all AQI towers (stations) in the given city.
+    """
+    url = f"https://api.waqi.info/search/?token={WAQI_TOKEN}&keyword={city_name}"
+    response = requests.get(url)
+    data = response.json()
+    if data["status"] == "ok":
+        return data["data"]
+    return []

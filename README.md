@@ -1,4 +1,4 @@
-# Picmica-Pollution-Zones
+# Air Monitoring AI System
 
 
 # 🌆 Live AQI & Weather Dashboard

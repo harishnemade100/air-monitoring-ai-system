@@ -1,30 +1,24 @@
-import requests
-from urllib.parse import quote_plus
-from setting.constants import GEOAPIFY_KEY
+"""Geoapify: find a city and its administrative zones (wards/areas)."""
+import streamlit as st
 
-def get_place_id(city):
-    url = (
-        f"https://api.geoapify.com/v1/geocode/search?"
-        f"text={quote_plus(city)}&type=city&limit=1&apiKey={GEOAPIFY_KEY}"
-    )
-    r = requests.get(url)
-    r.raise_for_status()
-    data = r.json()
-    if len(data["features"]) == 0:
-        raise ValueError("City not found")
-
-    props = data["features"][0]["properties"]
-    coords = data["features"][0]["geometry"]["coordinates"][::-1]  # lat, lon
-
-    return props["place_id"], coords
+from setting.constants import CACHE_STATIC, GEOAPIFY_KEY
+from utils.http import get_json
 
 
-def get_zones(place_id):
-    url = (
-        f"https://api.geoapify.com/v1/boundaries/consists-of?"
-        f"id={place_id}&boundary=administrative&geometry=geometry_1000"
-        f"&apiKey={GEOAPIFY_KEY}"
-    )
-    r = requests.get(url)
-    r.raise_for_status()
-    return r.json()
+@st.cache_data(ttl=CACHE_STATIC, show_spinner=False)
+def get_place_id(city: str):
+    data = get_json("https://api.geoapify.com/v1/geocode/search",
+                    {"text": city, "type": "city", "limit": 1, "apiKey": GEOAPIFY_KEY})
+    if not data or not data.get("features"):
+        raise ValueError(f"City '{city}' not found")
+    feature = data["features"][0]
+    lon, lat = feature["geometry"]["coordinates"]
+    return feature["properties"]["place_id"], (lat, lon)
+
+
+@st.cache_data(ttl=CACHE_STATIC, show_spinner=False)
+def get_zones(place_id: str) -> dict:
+    data = get_json("https://api.geoapify.com/v1/boundaries/consists-of",
+                    {"id": place_id, "boundary": "administrative", "geometry": "geometry_1000",
+                     "apiKey": GEOAPIFY_KEY})
+    return data or {"features": []}

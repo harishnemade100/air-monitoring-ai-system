@@ -71,14 +71,19 @@ def plot_weather_forecast(weather_df: pd.DataFrame):
 
 def plot_station_bars(df_towers: pd.DataFrame):
     """Station-wise AQI as coloured bars (replaces the old pie chart, which summed AQI values)."""
-    df = df_towers.dropna(subset=["AQI"]).sort_values("AQI")
+    df = df_towers.dropna(subset=["AQI"]).sort_values("AQI").copy()
+    short = df["Station"].str.split(",").str[0].str.slice(0, 32)
+    if "Source" in df:
+        short = short + df["Source"].map(lambda s: " (est.)" if s == "Model estimate" else "")
+    df["Label"] = short
     fig = go.Figure(go.Bar(
-        x=df["AQI"], y=df["Station"], orientation="h",
+        x=df["AQI"], y=df["Label"], orientation="h", customdata=df["Station"],
         marker_color=[aqi_color(v) for v in df["AQI"]],
         text=df["AQI"], textposition="outside",
-        hovertemplate="%{y}<br>AQI: %{x}<extra></extra>",
+        hovertemplate="%{customdata}<br>AQI: %{x}<extra></extra>",
     ))
     fig.update_layout(height=max(300, 28 * len(df) + 80), xaxis_title="US AQI", yaxis_title="",
+                      yaxis=dict(type="category"),
                       margin=dict(l=10, r=30, t=30))
     return fig
 

@@ -15,7 +15,9 @@ _LEGEND = """
 <span style="color:#ff7e00">&#9632;</span> 101–150 Sensitive<br>
 <span style="color:#ff0000">&#9632;</span> 151–200 Unhealthy<br>
 <span style="color:#8f3f97">&#9632;</span> 201–300 Very unhealthy<br>
-<span style="color:#7e0023">&#9632;</span> 300+ Hazardous
+<span style="color:#7e0023">&#9632;</span> 300+ Hazardous<br>
+<span style="color:#808080">&#9632;</span> No data<br>
+<span style="opacity:.6">&#9711;</span> Faded, dashed = model estimate
 </div>
 """
 
@@ -60,12 +62,15 @@ def create_map(selected_feature=None, all_features=None, default_city_coords=Non
 
     for t in towers or []:
         color = aqi_color(t["AQI"])
+        estimated = t.get("Source") == "Model estimate"
+        label = "Model estimate" if estimated else "Live station reading"
         folium.CircleMarker(
-            location=[t["Latitude"], t["Longitude"]], radius=8, color=color, fill=True,
-            fill_color=color, fill_opacity=0.85,
-            popup=folium.Popup(f"<b>{t['Station']}</b><br>AQI: {_fmt(t['AQI'])} ({aqi_health_label(t['AQI'])})",
-                               max_width=250),
-            tooltip=f"{t['Station']}: {_fmt(t['AQI'])}",
+            location=[t["Latitude"], t["Longitude"]], radius=8, color=color, weight=2,
+            dash_array="4 3" if estimated else None,
+            fill=True, fill_color=color, fill_opacity=0.35 if estimated else 0.85,
+            popup=folium.Popup(f"<b>{t['Station']}</b><br>AQI: {_fmt(t['AQI'])} ({aqi_health_label(t['AQI'])})"
+                               f"<br><i>{label}</i>", max_width=260),
+            tooltip=f"{t['Station']}: {_fmt(t['AQI'])}{' (estimate)' if estimated else ''}",
         ).add_to(m)
 
     m.get_root().html.add_child(folium.Element(_LEGEND))

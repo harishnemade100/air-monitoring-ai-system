@@ -1,84 +1,97 @@
+"""Charts for forecasts and trends (Plotly)."""
 import pandas as pd
-import requests
-from datetime import datetime, timedelta
 import plotly.graph_objects as go
+
 from utils.color_utils import aqi_color, aqi_health_label
 
+# US AQI bands drawn behind charts
+_BANDS = [(0, 50, "#00e400"), (50, 100, "#ffff00"), (100, 150, "#ff7e00"),
+          (150, 200, "#ff0000"), (200, 300, "#8f3f97"), (300, 500, "#7e0023")]
 
-def get_aqi_forecast(lat, lon, current_aqi):
-    """
-    Returns simulated past 12h + next 12h AQI forecast DataFrame
-    """
-    now = datetime.now()
-    hours = [now - timedelta(hours=i) for i in reversed(range(12))] + \
-            [now + timedelta(hours=i) for i in range(1,13)]
-    values = [current_aqi - 5 + i for i in range(12)] + [current_aqi + i for i in range(12)]
-    df = pd.DataFrame({"datetime": hours, "AQI": values})
-    df['status'] = df['AQI'].apply(aqi_health_label)
-    df['color'] = df['AQI'].apply(aqi_color)
-    return df
 
-def plot_aqi_forecast(aqi_df):
+def _now_line(fig, now):
+    if now is not None:
+        fig.add_vline(x=now, line_dash="dash", line_color="gray")
+        fig.add_annotation(x=now, y=1, yref="paper", text="Now", showarrow=False, yanchor="bottom")
+
+
+def plot_aqi_trend(hourly: pd.DataFrame, show_india: bool = True):
+    """Real hourly AQI: past days + forecast, with health bands."""
     fig = go.Figure()
+    top = max(150, (hourly["US AQI"].max() or 0) + 20)
+    for lo, hi, colour in _BANDS:
+        if lo < top:
+            fig.add_hrect(y0=lo, y1=min(hi, top), fillcolor=colour, opacity=0.08, line_width=0)
     fig.add_trace(go.Scatter(
-        x=aqi_df['datetime'],
-        y=aqi_df['AQI'],
-        mode='lines+markers',
-        marker=dict(color=aqi_df['color']),
-        line=dict(color='blue'),
-        hovertemplate="Time: %{x}<br>AQI: %{y}<br>Status: %{text}",
-        text=aqi_df['status'],
-        name='AQI'
+        x=hourly["datetime"], y=hourly["US AQI"], mode="lines+markers", name="US AQI",
+        marker=dict(color=[aqi_color(v) for v in hourly["US AQI"]], size=5), line=dict(color="#1f77b4"),
+        text=[aqi_health_label(v) for v in hourly["US AQI"]],
+        hovertemplate="%{x|%d %b %H:%M}<br>US AQI: %{y}<br>%{text}<extra></extra>",
     ))
+    if show_india and "India AQI" in hourly:
+        fig.add_trace(go.Scatter(
+            x=hourly["datetime"], y=hourly["India AQI"], mode="lines", name="India AQI (CPCB, 24h)",
+            line=dict(color="#ff7f0e", dash="dot"),
+            hovertemplate="%{x|%d %b %H:%M}<br>India AQI: %{y}<extra></extra>",
+        ))
+    _now_line(fig, hourly.attrs.get("now"))
+    fig.update_layout(height=380, hovermode="x unified", yaxis_title="AQI", xaxis_title="",
+                      yaxis_range=[0, top], legend=dict(orientation="h", y=-0.15), margin=dict(t=30))
+    return fig
+
+
+def plot_pollutants(hourly: pd.DataFrame, pollutants: list[str]):
+    """Pollutant concentrations over time (µg/m³)."""
+    fig = go.Figure()
+    for p in pollutants:
+        if p in hourly:
+            fig.add_trace(go.Scatter(x=hourly["datetime"], y=hourly[p], mode="lines", name=p,
+                                     hovertemplate=f"%{{x|%d %b %H:%M}}<br>{p}: %{{y:.1f}} µg/m³<extra></extra>"))
+    _now_line(fig, hourly.attrs.get("now"))
+    fig.update_layout(height=360, hovermode="x unified", yaxis_title="µg/m³", xaxis_title="",
+                      legend=dict(orientation="h", y=-0.15), margin=dict(t=30))
+    return fig
+
+
+def plot_weather_forecast(weather_df: pd.DataFrame):
+    """Temperature line + humidity bars (next 5 days)."""
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=weather_df["datetime"], y=weather_df["Humidity"], name="Humidity (%)",
+                         marker_color="rgba(31,119,180,0.25)", yaxis="y2",
+                         hovertemplate="Humidity: %{y}%<extra></extra>"))
+    fig.add_trace(go.Scatter(x=weather_df["datetime"], y=weather_df["Temp"], name="Temperature (°C)",
+                             mode="lines+markers", line=dict(color="#ff7f0e"),
+                             hovertemplate="%{x|%d %b %H:%M}<br>Temp: %{y:.1f} °C<extra></extra>"))
     fig.update_layout(
-        title="Past + Forecast AQI",
-        xaxis_title="Time",
-        yaxis_title="AQI",
-        hovermode="x unified",
-        height=300
+        height=360, hovermode="x unified", margin=dict(t=30), legend=dict(orientation="h", y=-0.15),
+        yaxis=dict(title="°C"), yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 100]),
     )
     return fig
 
-# ---------------- WEATHER FORECAST ----------------
-def get_weather_forecast(lat, lon, api_key):
-    """
-    Returns next 24h temperature forecast DataFrame
-    """
-    weather_url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-    resp = requests.get(weather_url).json()
 
-    df = pd.DataFrame({
-        "datetime": [datetime.fromtimestamp(item['dt']) for item in resp['list'][:8]],  # next 24h (3h interval)
-        "Temp": [item['main']['temp'] for item in resp['list'][:8]]
-    })
-
-    def temp_color(temp):
-        if temp < 15:
-            return 'blue'
-        elif temp > 35:
-            return 'red'
-        else:
-            return 'orange'
-
-    df['color'] = df['Temp'].apply(temp_color)
-    return df
-
-def plot_weather_forecast(weather_df):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=weather_df['datetime'],
-        y=weather_df['Temp'],
-        mode='lines+markers',
-        line=dict(color='orange'),
-        marker=dict(color=weather_df['color']),
-        hovertemplate="Time: %{x}<br>Temp: %{y} °C",
-        name='Temp'
+def plot_station_bars(df_towers: pd.DataFrame):
+    """Station-wise AQI as coloured bars (replaces the old pie chart, which summed AQI values)."""
+    df = df_towers.dropna(subset=["AQI"]).sort_values("AQI")
+    fig = go.Figure(go.Bar(
+        x=df["AQI"], y=df["Station"], orientation="h",
+        marker_color=[aqi_color(v) for v in df["AQI"]],
+        text=df["AQI"], textposition="outside",
+        hovertemplate="%{y}<br>AQI: %{x}<extra></extra>",
     ))
-    fig.update_layout(
-        title="Next 24h Temperature Forecast",
-        xaxis_title="Time",
-        yaxis_title="Temp (°C)",
-        hovermode="x unified",
-        height=300
-    )
+    fig.update_layout(height=max(300, 28 * len(df) + 80), xaxis_title="US AQI", yaxis_title="",
+                      margin=dict(l=10, r=30, t=30))
+    return fig
+
+
+def plot_city_comparison(df: pd.DataFrame, highlight: str | None = None):
+    df = df.sort_values("US AQI")
+    colours = [aqi_color(v) for v in df["US AQI"]]
+    fig = go.Figure(go.Bar(
+        x=df["US AQI"], y=df["City"], orientation="h", marker_color=colours,
+        marker_line_width=[3 if c == highlight else 0 for c in df["City"]], marker_line_color="black",
+        text=df["US AQI"].round(0).astype(int), textposition="outside",
+        hovertemplate="%{y}<br>US AQI: %{x}<extra></extra>",
+    ))
+    fig.update_layout(height=max(350, 30 * len(df) + 80), xaxis_title="US AQI (now)", yaxis_title="",
+                      margin=dict(l=10, r=30, t=30))
     return fig

@@ -66,3 +66,21 @@ def get_current_for_cities(cities: dict) -> pd.DataFrame:
             "Longitude": cities[name][1],
         })
     return pd.DataFrame(rows).dropna(subset=["US AQI"]).sort_values("US AQI").reset_index(drop=True)
+
+
+@st.cache_data(ttl=CACHE_LIVE, show_spinner=False)
+def get_current_us_aqi_at(points: tuple) -> list:
+    """Current modelled US AQI at each (lat, lon) point, in the same order (None if unavailable).
+    Used to fill monitoring stations that have no live reading."""
+    if not points:
+        return []
+    data = get_json(BASE_URL, {
+        "latitude": ",".join(str(round(p[0], 4)) for p in points),
+        "longitude": ",".join(str(round(p[1], 4)) for p in points),
+        "current": "us_aqi", "timezone": "auto",
+    })
+    if data is None:
+        return [None] * len(points)
+    results = data if isinstance(data, list) else [data]
+    values = [((item or {}).get("current") or {}).get("us_aqi") for item in results]
+    return (values + [None] * len(points))[: len(points)]

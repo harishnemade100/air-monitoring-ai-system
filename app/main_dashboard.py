@@ -4,7 +4,8 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from services.ai_agent_service import get_ai_advisory, get_pollution_news
-from services.air_quality_service import POLLUTANTS, get_current_for_cities, get_hourly_air_quality
+from services.air_quality_service import (POLLUTANTS, get_current_for_cities, get_current_us_aqi_at,
+                                          get_hourly_air_quality)
 from services.forecast_service import (plot_aqi_trend, plot_city_comparison, plot_pollutants,
                                        plot_station_bars, plot_weather_forecast)
 from services.geoapify_service import get_place_id, get_zones
@@ -34,15 +35,47 @@ def _badge(text, colour):
 
 
 def _load_city(city: str):
-    """Geocode a city and load its zones into the session."""
+    """Geocode a city and load its zones into the session (used as a button callback)."""
+    city = (city or "").strip()
+    if not city:
+        st.session_state.city_error = "Type a city name first."
+        return
     try:
         place_id, coords = get_place_id(city)
         zones = get_zones(place_id).get("features", [])
-        st.session_state.update(city=city.strip().title(), city_coords=tuple(coords), zones=zones)
+        st.session_state.update(city=city.title(), city_coords=tuple(coords), zones=zones,
+                                city_input=city.title(), city_error=None)
         st.session_state.pop("zone_select", None)
-        st.session_state.city_error = None
     except Exception as e:
         st.session_state.city_error = f"Couldn't load '{city}': {e}"
+
+
+def _open_saved():
+    if st.session_state.get("saved_pick"):
+        _load_city(st.session_state.saved_pick)
+
+
+def _remove_saved(user_id: int):
+    if st.session_state.get("saved_pick"):
+        remove_city(user_id, st.session_state.saved_pick)
+        st.session_state.saved_pick = None
+
+
+def _save_current(user_id: int):
+    save_city(user_id, st.session_state.get("city", DEFAULT_CITY),
+              st.session_state.get("city_coords", DEFAULT_COORDS))
+    st.toast(f"Saved {st.session_state.get('city', DEFAULT_CITY)}.")
+
+
+def _fill_missing_with_estimates(towers: list[dict]) -> list[dict]:
+    """Stations with no live reading get the model's AQI estimate at their location."""
+    missing = [t for t in towers if t["AQI"] is None]
+    if missing:
+        estimates = get_current_us_aqi_at(tuple((t["Latitude"], t["Longitude"]) for t in missing))
+        for tower, value in zip(missing, estimates):
+            if value is not None:
+                tower.update(AQI=int(value), Source="Model estimate")
+    return towers
 
 
 def _logout():
@@ -69,28 +102,27 @@ def _sidebar(user):
     sb.divider()
 
     sb.subheader("📍 City & zone")
-    city_input = sb.text_input("Enter a city", st.session_state.get("city", DEFAULT_CITY))
-    if sb.button("Load city", type="primary", width="stretch"):
-        _load_city(city_input)
+    st.session_state.setdefault("city_input", st.session_state.get("city", DEFAULT_CITY))
+    sb.text_input("Enter a city", key="city_input")
+    sb.button("Load city", type="primary", width="stretch",
+              on_click=lambda: _load_city(st.session_state.city_input))
     if st.session_state.get("city_error"):
         sb.error(st.session_state.city_error)
 
     # Saved cities
     saved = list_saved_cities(user["id"])
-    current_city = st.session_state.get("city", DEFAULT_CITY)
-    if saved:
-        names = [s["city"] for s in saved]
-        pick = sb.selectbox("⭐ Saved cities", names, index=None, placeholder="Open a saved city…")
+    saved_names = [s["city"] for s in saved]
+    if saved_names:
+        if st.session_state.get("saved_pick") not in saved_names:
+            st.session_state.saved_pick = None
+        sb.selectbox("⭐ Saved cities", saved_names, index=None, placeholder="Open a saved city…", key="saved_pick")
         c1, c2 = sb.columns(2)
-        if c1.button("Open", width="stretch", disabled=pick is None):
-            _load_city(pick)
-        if c2.button("Remove", width="stretch", disabled=pick is None):
-            remove_city(user["id"], pick)
-            st.rerun()
-    if current_city not in [s["city"] for s in saved]:
-        if sb.button(f"⭐ Save {current_city}", width="stretch"):
-            save_city(user["id"], current_city, st.session_state.get("city_coords", DEFAULT_COORDS))
-            st.rerun()
+        no_pick = st.session_state.saved_pick is None
+        c1.button("Open", width="stretch", disabled=no_pick, on_click=_open_saved)
+        c2.button("Remove", width="stretch", disabled=no_pick, on_click=_remove_saved, args=(user["id"],))
+    current_city = st.session_state.get("city", DEFAULT_CITY)
+    if current_city not in saved_names:
+        sb.button(f"⭐ Save {current_city}", width="stretch", on_click=_save_current, args=(user["id"],))
 
     zones = st.session_state.get("zones", [])
     selected_zone = None
@@ -185,7 +217,10 @@ def show_dashboard():
 
     # ---------------- TAB 1: MAP ----------------
     with tabs[0]:
-        towers = get_aqi_towers(city_name) if show_towers else []
+        towers = []
+        if show_towers:
+            with st.spinner("Loading monitoring stations…"):
+                towers = _fill_missing_with_estimates([dict(t) for t in get_aqi_towers(city_name, city_lat, city_lon)])
         df_towers = pd.DataFrame(towers)
         left, right = st.columns([2, 1])
         with left:
@@ -197,17 +232,23 @@ def show_dashboard():
             st.subheader("Monitoring stations")
             valid = df_towers.dropna(subset=["AQI"]) if not df_towers.empty else df_towers
             if not valid.empty:
+                live = int((valid["Source"] == "Station").sum())
                 c1, c2 = st.columns(2)
-                c1.metric("Stations", len(valid))
+                c1.metric("Stations", len(valid), f"{live} live · {len(valid) - live} estimated", delta_color="off")
                 c2.metric("Average AQI", int(valid["AQI"].mean()))
                 best, worst = valid.loc[valid["AQI"].idxmin()], valid.loc[valid["AQI"].idxmax()]
                 st.markdown(f"🟢 Cleanest: **{best['Station']}** ({int(best['AQI'])})  \n"
                             f"🔴 Most polluted: **{worst['Station']}** ({int(worst['AQI'])})")
                 st.plotly_chart(plot_station_bars(valid), width="stretch")
-                st.download_button("⬇️ Download station data (CSV)", valid.to_csv(index=False),
+                if live < len(valid):
+                    st.caption("Faded, dashed markers: the station had no live reading, so the map shows "
+                               "Open-Meteo's model estimate for that location.")
+                st.dataframe(valid[["Station", "AQI", "Source", "Distance (km)", "Updated"]], hide_index=True,
+                             width="stretch", height=220)
+                st.download_button("⬇️ Download station data (CSV)", valid.drop(columns=["uid"]).to_csv(index=False),
                                    f"{city_name}_stations.csv", "text/csv", width="stretch")
             elif show_towers:
-                st.info("No monitoring station data found for this city.")
+                st.info(f"No monitoring stations found within 60 km of {city_name}.")
             else:
                 st.info("Turn on **Show monitoring stations** in the sidebar.")
 
